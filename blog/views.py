@@ -11,7 +11,7 @@ def serialize_post(post):
     return {
         'title': post.title,
         'teaser_text': post.text[:200],
-        'author': post.author.username,  # Теперь без лишних SQL-запросов!
+        'author': post.author.username,
         'comments_amount': len(Comment.objects.filter(post=post)),
         'image_url': post.image.url if post.image else None,
         'published_at': post.published_at,
@@ -33,9 +33,21 @@ def index(request):
         Post.objects
         .annotate(likes_count=models.Count('likes', distinct=True))
         .order_by('-likes_count')
-        .select_related('author')  # Ускоряем запросы
-        .prefetch_related('likes', 'tags')[:5]
+        .select_related('author')[:5]
     )
+
+    most_popular_posts_ids = [post.id for post in most_popular_posts]
+
+    posts_with_comments = (
+        Post.objects
+        .filter(id__in=most_popular_posts_ids)
+        .annotate(comments_count=models.Count('comment'))
+    )
+
+    count_for_id = dict(posts_with_comments.values_list('id', 'comments_count'))
+
+    for post in most_popular_posts:
+        post.comments_count = count_for_id.get(post.id, 0)
 
     fresh_posts = (
         Post.objects
@@ -55,6 +67,7 @@ def index(request):
         'popular_tags': [serialize_tag(tag) for tag in most_popular_tags],
     }
     return render(request, 'index.html', context)
+
 
 
 def post_detail(request, slug):
